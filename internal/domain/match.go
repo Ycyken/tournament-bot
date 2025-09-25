@@ -21,7 +21,7 @@ const (
 type Match struct {
 	ID           MatchID
 	TournamentID TournamentID
-	Round        int
+	Round        Round
 
 	P1 ParticipantID
 	P2 ParticipantID
