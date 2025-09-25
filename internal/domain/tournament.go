@@ -118,20 +118,20 @@ func (t *Tournament) DrawNewRound() error {
 			})
 		}
 	} else {
-		distribution := pairParticipantsSwiss(t)
-		for i := 0; i < len(distribution)-1; i += 2 {
+		pairing := pairParticipantsSwiss(t)
+		for i := 0; i < len(pairing)-1; i += 2 {
 			t.Matches[t.CurrentRound] = append(t.Matches[t.CurrentRound], &Match{
 				ID:           MatchID(len(t.Matches[t.CurrentRound]) + 1),
 				TournamentID: t.ID,
 				Round:        t.CurrentRound,
-				P1:           distribution[i],
-				P2:           distribution[i+1],
+				P1:           pairing[i],
+				P2:           pairing[i+1],
 				State:        MatchScheduled,
 			})
 		}
 		if pNumber%2 == 1 {
-			t.Participants[distribution[pNumber-1]].Score += 1.0
-			t.byes[distribution[pNumber-1]] = true
+			t.Participants[pairing[pNumber-1]].Score += 1.0
+			t.byes[pairing[pNumber-1]] = true
 		}
 	}
 
@@ -159,28 +159,29 @@ func pairParticipantsSwiss(t *Tournament) []ParticipantID {
 		return participantsCopy[i].Score > participantsCopy[j].Score
 	})
 
-	var distribution []ParticipantID
-	distributed := make(map[ParticipantID]bool)
+	var pairing []ParticipantID
+	paired := make(map[ParticipantID]bool)
+
 	for i := 0; i < len(participantsCopy); i++ {
+		p1 := participantsCopy[i].ID
 
 		for j := i + 1; j < len(participantsCopy); j++ {
-			p1 := participantsCopy[i].ID
 			p2 := participantsCopy[j].ID
 			if p1 == byeID || p2 == byeID {
 				continue
 			}
-			if !t.opponents[p1][p2] && !distributed[p2] {
-				distribution = append(distribution, p1, p2)
-				distributed[p1] = true
-				distributed[p2] = true
+			if !t.opponents[p1][p2] && !paired[p2] {
+				pairing = append(pairing, p1, p2)
+				paired[p1] = true
+				paired[p2] = true
 				break
 			}
 		}
 	}
 
 	if len(t.Participants)%2 == 1 {
-		distribution = append(distribution, byeID)
+		pairing = append(pairing, byeID)
 	}
 
-	return distribution
+	return pairing
 }
