@@ -1,6 +1,8 @@
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 type (
 	TelegramUserID int64
@@ -9,11 +11,20 @@ type (
 	MatchID        int64
 )
 
+type System string
+
+const (
+	SingleElimination System = "single_elimination"
+	Swiss             System = "swiss"
+)
+
 type Tournament struct {
 	ID           TournamentID
 	OwnerID      TelegramUserID
 	Title        string
+	System       System
 	Participants []ParticipantID
+	opponents    map[ParticipantID]map[ParticipantID]struct{}
 
 	StartTime time.Time
 }
@@ -54,12 +65,15 @@ const (
 type Match struct {
 	ID           MatchID
 	TournamentID TournamentID
+	Round        int
 
 	P1 ParticipantID
 	P2 ParticipantID
 
-	State  MatchState
-	Result *ResultType
+	State     MatchState
+	OpinionP1 *ResultType
+	OpinionP2 *ResultType
+	Result    *ResultType
 
 	ScheduledAt *time.Time
 }
