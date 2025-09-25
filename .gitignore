@@ -1,0 +1,23 @@
+# Go build
+bin/
+dist/
+build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE/editor
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# Local data (например, локальная БД)
+data/
+*.db
