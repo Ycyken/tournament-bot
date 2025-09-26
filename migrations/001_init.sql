@@ -66,8 +66,18 @@ CREATE TABLE matches (
                          created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE applications (
+                              id BIGSERIAL PRIMARY KEY,
+                              tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+                              telegram_user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+                              created_at TIMESTAMP DEFAULT NOW(),
+                              UNIQUE (tournament_id, telegram_user_id)
+);
+
 CREATE INDEX idx_users_telegram_id ON users(telegram_id);
 CREATE INDEX idx_tournaments_owner ON tournaments(owner_id);
 CREATE INDEX idx_participants_tournament ON participants(tournament_id);
 CREATE INDEX idx_matches_tournament ON matches(tournament_id);
 CREATE INDEX idx_matches_round ON matches(tournament_id, round_number);
+CREATE INDEX idx_applications_tournament ON applications(tournament_id);
+CREATE INDEX idx_applications_user ON applications(telegram_user_id);

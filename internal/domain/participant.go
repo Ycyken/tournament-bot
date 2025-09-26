@@ -11,6 +11,7 @@ const (
 
 type Participant struct {
 	ID           ParticipantID
+	DBID         int64 // for SQL primary key
 	TournamentID TournamentID
 	Kind         ParticipantKind
 	Roster       []TelegramUserID

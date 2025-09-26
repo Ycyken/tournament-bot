@@ -32,8 +32,8 @@ type Tournament struct {
 
 	Matches      map[Round][]*Match
 	Participants []*Participant
-	opponents    map[ParticipantID]map[ParticipantID]bool
-	byes         map[ParticipantID]bool
+	Opponents    map[ParticipantID]map[ParticipantID]bool
+	Byes         map[ParticipantID]bool
 
 	StartTime time.Time
 }
@@ -48,8 +48,8 @@ func NewTournament(ownerID TelegramUserID, title string, system System) *Tournam
 
 		Matches:      make(map[Round][]*Match),
 		Participants: []*Participant{},
-		opponents:    make(map[ParticipantID]map[ParticipantID]bool),
-		byes:         make(map[ParticipantID]bool),
+		Opponents:    make(map[ParticipantID]map[ParticipantID]bool),
+		Byes:         make(map[ParticipantID]bool),
 
 		StartTime: time.Now(),
 	}
@@ -121,7 +121,7 @@ func (t *Tournament) DrawNewRound() error {
 		shuffled := shuffledIDs(pNumber)
 		if (pNumber % 2) == 1 {
 			t.Participants[shuffled[pNumber-1]].Score += 1.0
-			t.byes[shuffled[pNumber-1]] = true
+			t.Byes[shuffled[pNumber-1]] = true
 		}
 
 		for i := 0; i < len(shuffled)-1; i += 2 {
@@ -148,7 +148,7 @@ func (t *Tournament) DrawNewRound() error {
 		}
 		if pNumber%2 == 1 {
 			t.Participants[pairing[pNumber-1]].Score += 1.0
-			t.byes[pairing[pNumber-1]] = true
+			t.Byes[pairing[pNumber-1]] = true
 		}
 	}
 
@@ -159,7 +159,7 @@ func pairParticipantsSwiss(t *Tournament) []ParticipantID {
 	var byeID ParticipantID = -1
 	var lowestScore float64 = math.MaxFloat64
 	for _, p := range t.Participants {
-		if !t.byes[p.ID] && (p.Score < lowestScore) {
+		if !t.Byes[p.ID] && (p.Score < lowestScore) {
 			byeID = p.ID
 			lowestScore = p.Score
 		}
@@ -187,7 +187,7 @@ func pairParticipantsSwiss(t *Tournament) []ParticipantID {
 			if p1 == byeID || p2 == byeID {
 				continue
 			}
-			if !t.opponents[p1][p2] && !paired[p2] {
+			if !t.Opponents[p1][p2] && !paired[p2] {
 				pairing = append(pairing, p1, p2)
 				paired[p1] = true
 				paired[p2] = true

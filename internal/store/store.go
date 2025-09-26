@@ -8,6 +8,8 @@ type Store interface {
 	SaveTournament(t *domain.Tournament) error
 	GetTournament(id domain.TournamentID) (*domain.Tournament, error)
 
+	CreateParticipant(p *domain.Participant) (int64, error)
+
 	CreateApplication(app *domain.Application) error
 	GetApplications(tournamentID domain.TournamentID) ([]*domain.Application, error)
 	DeleteApplication(tournamentID domain.TournamentID, userID domain.TelegramUserID) error
