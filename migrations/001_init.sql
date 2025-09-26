@@ -6,6 +6,17 @@ CREATE TABLE users (
                        created_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE tournaments (
+                             id BIGSERIAL PRIMARY KEY,
+                             owner_id BIGINT NOT NULL REFERENCES users(telegram_id),
+                             title VARCHAR(255) NOT NULL,
+                             system VARCHAR(50) NOT NULL, -- 'single_elimination' или 'swiss'
+                             current_round INT DEFAULT 0,
+                             last_round INT DEFAULT 0,
+                             start_time TIMESTAMP DEFAULT NOW(),
+                             created_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE participants (
                               id BIGSERIAL PRIMARY KEY,
                               tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -21,17 +32,6 @@ CREATE TABLE participant_members (
                                      participant_id BIGINT NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
                                      telegram_user_id BIGINT NOT NULL REFERENCES users(telegram_id),
                                      UNIQUE(participant_id, telegram_user_id)
-);
-
-CREATE TABLE tournaments (
-                             id BIGSERIAL PRIMARY KEY,
-                             owner_id BIGINT NOT NULL REFERENCES users(telegram_id),
-                             title VARCHAR(255) NOT NULL,
-                             system VARCHAR(50) NOT NULL, -- 'single_elimination' или 'swiss'
-                             current_round INT DEFAULT 0,
-                             last_round INT DEFAULT 0,
-                             start_time TIMESTAMP DEFAULT NOW(),
-                             created_at TIMESTAMP DEFAULT NOW()
 );
 
 CREATE TABLE participant_opponents (
