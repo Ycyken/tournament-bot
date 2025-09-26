@@ -117,39 +117,25 @@ func (t *Tournament) DrawNewRound() error {
 	t.CurrentRound++
 
 	pNumber := len(t.Participants)
+	var pairing []ParticipantID
 	if t.CurrentRound == 1 {
-		shuffled := shuffledIDs(pNumber)
-		if (pNumber % 2) == 1 {
-			t.Participants[shuffled[pNumber-1]].Score += 1.0
-			t.Byes[shuffled[pNumber-1]] = true
-		}
-
-		for i := 0; i < len(shuffled)-1; i += 2 {
-			t.Matches[t.CurrentRound] = append(t.Matches[t.CurrentRound], &Match{
-				ID:           MatchID(len(t.Matches[t.CurrentRound]) + 1),
-				TournamentID: t.ID,
-				Round:        t.CurrentRound,
-				P1:           shuffled[i],
-				P2:           shuffled[i+1],
-				State:        MatchScheduled,
-			})
-		}
+		pairing = shuffledIDs(pNumber)
 	} else {
-		pairing := pairParticipantsSwiss(t)
-		for i := 0; i < len(pairing)-1; i += 2 {
-			t.Matches[t.CurrentRound] = append(t.Matches[t.CurrentRound], &Match{
-				ID:           MatchID(len(t.Matches[t.CurrentRound]) + 1),
-				TournamentID: t.ID,
-				Round:        t.CurrentRound,
-				P1:           pairing[i],
-				P2:           pairing[i+1],
-				State:        MatchScheduled,
-			})
-		}
-		if pNumber%2 == 1 {
-			t.Participants[pairing[pNumber-1]].Score += 1.0
-			t.Byes[pairing[pNumber-1]] = true
-		}
+		pairing = pairParticipantsSwiss(t)
+	}
+	for i := 0; i < len(pairing)-1; i += 2 {
+		t.Matches[t.CurrentRound] = append(t.Matches[t.CurrentRound], &Match{
+			ID:           MatchID(len(t.Matches[t.CurrentRound]) + 1),
+			TournamentID: t.ID,
+			Round:        t.CurrentRound,
+			P1:           pairing[i],
+			P2:           pairing[i+1],
+			State:        MatchScheduled,
+		})
+	}
+	if pNumber%2 == 1 {
+		t.Participants[pairing[pNumber-1]].Score += 1.0
+		t.Byes[pairing[pNumber-1]] = true
 	}
 
 	return nil
