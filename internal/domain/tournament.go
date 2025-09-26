@@ -38,7 +38,24 @@ type Tournament struct {
 	StartTime time.Time
 }
 
-func (t *Tournament) reportOpinion(matchID MatchID, pID ParticipantID, result ResultType) error {
+func NewTournament(ownerID TelegramUserID, title string, system System) *Tournament {
+	return &Tournament{
+		OwnerID:      ownerID,
+		Title:        title,
+		System:       system,
+		CurrentRound: 0,
+		LastRound:    0,
+
+		Matches:      make(map[Round][]*Match),
+		Participants: []*Participant{},
+		opponents:    make(map[ParticipantID]map[ParticipantID]bool),
+		byes:         make(map[ParticipantID]bool),
+
+		StartTime: time.Now(),
+	}
+}
+
+func (t *Tournament) ReportOpinion(matchID MatchID, pID ParticipantID, result ResultType) error {
 	match := t.Matches[t.CurrentRound][matchID]
 	if match == nil {
 		return ErrMatchNotFound
@@ -65,7 +82,7 @@ func (t *Tournament) reportOpinion(matchID MatchID, pID ParticipantID, result Re
 	return nil
 }
 
-func (t *Tournament) setMatchResultByAdmin(matchID MatchID, result ResultType) error {
+func (t *Tournament) SetMatchResultByAdmin(matchID MatchID, result ResultType) error {
 	match := t.Matches[t.CurrentRound][matchID]
 	if match == nil {
 		return ErrMatchNotFound
