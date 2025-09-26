@@ -106,11 +106,10 @@ func (s *Service) ApproveApplication(tid domain.TournamentID, userID domain.Tele
 		JoinedAt:     time.Now(),
 	}
 
-	dbid, err := s.store.CreateParticipant(p)
+	err = s.store.AddParticipant(p)
 	if err != nil {
 		return nil, err
 	}
-	p.DBID = dbid
 
 	t.Participants = append(t.Participants, p)
 

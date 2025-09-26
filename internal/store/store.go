@@ -8,7 +8,7 @@ type Store interface {
 	SaveTournament(t *domain.Tournament) error
 	GetTournament(id domain.TournamentID) (*domain.Tournament, error)
 
-	CreateParticipant(p *domain.Participant) (int64, error)
+	AddParticipant(p *domain.Participant) error
 
 	CreateApplication(app *domain.Application) error
 	GetApplications(tournamentID domain.TournamentID) ([]*domain.Application, error)

@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"database/sql"
-	"fmt"
+
 	"github.com/Ycyken/tournament-bot/internal/domain"
 )
 
@@ -37,28 +37,34 @@ func (s *PostgresStore) SaveTournament(t *domain.Tournament) error {
 	}
 
 	// save participants
-	for _, p := range t.Participants {
-		_, err := tx.Exec(`
-			INSERT INTO participants (id, tournament_id, kind, name, eliminated, score, joined_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-			ON CONFLICT (id) DO UPDATE
-			    SET eliminated = EXCLUDED.eliminated,
-			        score = EXCLUDED.score
-		`, p.ID, t.ID, p.Kind, fmt.Sprintf("P%d", p.ID), p.Eliminated, p.Score, p.JoinedAt)
-		if err != nil {
-			return err
-		}
+	err = SaveTournamentParticipants(tx, t)
+	if err != nil {
+		return err
+	}
 
-		// save telegram ids (rosters)
-		for _, uid := range p.Roster {
+	// save opponents history
+	for p1, opps := range t.Opponents {
+		for p2 := range opps {
 			_, err := tx.Exec(`
-				INSERT INTO participant_members (participant_id, telegram_user_id)
-				VALUES ($1, $2)
+				INSERT INTO participant_opponents (tournament_id, participant1_id, participant2_id)
+				VALUES ($1, $2, $3)
 				ON CONFLICT DO NOTHING
-			`, p.ID, uid)
+			`, t.ID, p1, p2)
 			if err != nil {
 				return err
 			}
+		}
+	}
+
+	// save byes
+	for pid := range t.Byes {
+		_, err := tx.Exec(`
+			INSERT INTO participant_byes (tournament_id, participant_id, round_number)
+			VALUES ($1, $2)
+			ON CONFLICT DO NOTHING
+		`, t.ID, pid)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -95,40 +101,6 @@ func (s *PostgresStore) SaveTournament(t *domain.Tournament) error {
 		}
 	}
 
-	// save opponents history
-	_, err = tx.Exec(`DELETE FROM participant_opponents WHERE tournament_id = $1`, t.ID)
-	if err != nil {
-		return err
-	}
-	for p1, opps := range t.Opponents {
-		for p2 := range opps {
-			_, err := tx.Exec(`
-				INSERT INTO participant_opponents (tournament_id, participant1_id, participant2_id)
-				VALUES ($1, $2, $3)
-				ON CONFLICT DO NOTHING
-			`, t.ID, p1, p2)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	// save byes
-	_, err = tx.Exec(`DELETE FROM participant_byes WHERE tournament_id = $1`, t.ID)
-	if err != nil {
-		return err
-	}
-	for pid := range t.Byes {
-		_, err := tx.Exec(`
-			INSERT INTO participant_byes (tournament_id, participant_id, round_number)
-			VALUES ($1, $2, $3)
-			ON CONFLICT DO NOTHING
-		`, t.ID, pid, t.CurrentRound)
-		if err != nil {
-			return err
-		}
-	}
-
 	return tx.Commit()
 }
 
@@ -148,9 +120,9 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 		return nil, err
 	}
 
-	// --- load participants ---
+	// load participants
 	rows, err := s.db.Query(`
-		SELECT id, kind, eliminated, score, joined_at
+		SELECT id, kind, name, eliminated, score, joined_at
 		FROM participants WHERE tournament_id = $1 ORDER BY id
 	`, t.ID)
 	if err != nil {
@@ -158,18 +130,15 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 	}
 	defer rows.Close()
 
-	dbIDToInternal := make(map[domain.ParticipantID]domain.ParticipantID) // DBID -> внутренний ID
-	internalID := domain.ParticipantID(0)
-
 	for rows.Next() {
 		p := &domain.Participant{}
-		if err := rows.Scan(&p.ID, &p.Kind, &p.Eliminated, &p.Score, &p.JoinedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Kind, &p.Name, &p.Eliminated, &p.Score, &p.JoinedAt); err != nil {
 			return nil, err
 		}
 		p.TournamentID = t.ID
 
 		// load roster
-		members, err := s.db.Query(`SELECT telegram_user_id FROM participant_members WHERE participant_id = $1`, p.ID)
+		members, err := s.db.Query(`SELECT telegram_user_id FROM participant_members WHERE participant_id = $1 AND tournamend_id = $2`, p.ID, t.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -183,11 +152,9 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 		members.Close()
 
 		t.Participants = append(t.Participants, p)
-		dbIDToInternal[p.ID] = internalID
-		internalID++
 	}
 
-	// --- load matches ---
+	// load matches
 	matches, err := s.db.Query(`
 		SELECT id, round_number, p1_id, p2_id, state, opinion_p1, opinion_p2, result, scheduled_at
 		FROM matches WHERE tournament_id = $1
@@ -205,10 +172,6 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 			return nil, err
 		}
 
-		// convert DBID -> internal ID
-		m.P1 = dbIDToInternal[m.P1]
-		m.P2 = dbIDToInternal[m.P2]
-
 		if opinionP1.Valid {
 			val := domain.ResultType(opinionP1.String)
 			m.OpinionP1 = &val
@@ -224,7 +187,7 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 		t.Matches[m.Round] = append(t.Matches[m.Round], m)
 	}
 
-	// --- load opponents history ---
+	// load opponents history
 	oppRows, err := s.db.Query(`
 		SELECT participant1_id, participant2_id
 		FROM participant_opponents WHERE tournament_id = $1
@@ -235,19 +198,21 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 	defer oppRows.Close()
 
 	for oppRows.Next() {
-		var dbp1, dbp2 domain.ParticipantID
-		if err := oppRows.Scan(&dbp1, &dbp2); err != nil {
+		var p1, p2 domain.ParticipantID
+		if err := oppRows.Scan(&p1, &p2); err != nil {
 			return nil, err
 		}
-		p1 := dbIDToInternal[dbp1]
-		p2 := dbIDToInternal[dbp2]
 		if t.Opponents[p1] == nil {
 			t.Opponents[p1] = make(map[domain.ParticipantID]bool)
 		}
+		if t.Opponents[p2] == nil {
+			t.Opponents[p2] = make(map[domain.ParticipantID]bool)
+		}
 		t.Opponents[p1][p2] = true
+		t.Opponents[p2][p1] = true
 	}
 
-	// --- load byes ---
+	// load byes
 	byeRows, err := s.db.Query(`
 		SELECT participant_id FROM participant_byes WHERE tournament_id = $1
 	`, t.ID)
@@ -257,35 +222,31 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 	defer byeRows.Close()
 
 	for byeRows.Next() {
-		var dbpid domain.ParticipantID
-		if err := byeRows.Scan(&dbpid); err != nil {
+		var p domain.ParticipantID
+		if err := byeRows.Scan(&p); err != nil {
 			return nil, err
 		}
-		internalPID := dbIDToInternal[dbpid]
-		t.Byes[internalPID] = true
+		t.Byes[p] = true
 	}
 
 	return t, nil
 }
 
-func (pg *PostgresStore) CreateParticipant(p *domain.Participant) (int64, error) {
-	query := `
-        INSERT INTO participants (tournament_id, kind, name, eliminated, score, joined_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id;
-    `
-	var id int64
-	err := pg.db.QueryRow(query, p.TournamentID, p.Kind, "user", p.Eliminated, p.Score, p.JoinedAt).Scan(&id)
+func (s *PostgresStore) AddParticipant(p *domain.Participant) error {
+	_, err := s.db.Exec(`
+        INSERT INTO participants (id, tournament_id, kind, name, eliminated, score, joined_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, p.ID, p.TournamentID, p.Kind, p.Name, p.Eliminated, p.Score, p.JoinedAt)
 	if err != nil {
-		return -1, err
+		return err
 	}
 
-	for _, uid := range p.Roster {
-		_, err = pg.db.Exec(`INSERT INTO participant_members (participant_id, telegram_user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, id, uid)
+	for _, tgid := range p.Roster {
+		_, err = s.db.Exec(`INSERT INTO participant_members (tournament_id, participant_id, telegram_user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, p.TournamentID, p.ID, tgid)
 		if err != nil {
-			return -1, err
+			return err
 		}
 	}
 
-	return id, nil
+	return nil
 }
