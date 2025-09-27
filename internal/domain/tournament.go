@@ -55,6 +55,17 @@ func NewTournament(ownerID TelegramUserID, title string, system System) *Tournam
 	}
 }
 
+func (t *Tournament) UserParticipates(tgID TelegramUserID) bool {
+	for _, p := range t.Participants {
+		for _, uid := range p.Roster {
+			if uid == tgID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (t *Tournament) ReportOpinion(matchID MatchID, pID ParticipantID, result ResultType) error {
 	match := t.Matches[t.CurrentRound][matchID]
 	if match == nil {

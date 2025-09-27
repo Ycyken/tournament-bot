@@ -14,7 +14,8 @@ CREATE TABLE participants (
                               tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
                               PRIMARY KEY (tournament_id, id),
                               kind VARCHAR(10) NOT NULL, -- 'user', 'team'
-                              name VARCHAR(255) DEFAULT 'ANONYMOUS',
+                              name VARCHAR(255) NOT NULL,
+                              telegram_tag VARCHAR(255),
                               eliminated BOOLEAN DEFAULT false,
                               score DECIMAL(4,1) DEFAULT 0.0,
                               joined_at TIMESTAMP DEFAULT NOW()
@@ -25,7 +26,7 @@ CREATE TABLE participant_members (
                                      participant_id BIGINT NOT NULL,
                                      telegram_user_id BIGINT NOT NULL,
                                      PRIMARY KEY (tournament_id, participant_id, telegram_user_id),
-                                     FOREIGN KEY (tournament_id, participant_id) REFERENCES participants(id, tournament_id) ON DELETE CASCADE
+                                     FOREIGN KEY (tournament_id, participant_id) REFERENCES participants(tournament_id, id) ON DELETE CASCADE
 );
 
 CREATE TABLE participant_opponents (
@@ -64,6 +65,9 @@ CREATE TABLE matches (
 CREATE TABLE applications (
                               tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
                               telegram_user_id BIGINT NOT NULL,
+                              name VARCHAR(255) NOT NULL,
+                              telegram_tag VARCHAR(255),
+                              text TEXT,
                               created_at TIMESTAMP DEFAULT NOW(),
                               PRIMARY KEY (tournament_id, telegram_user_id)
 );

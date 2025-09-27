@@ -15,13 +15,38 @@ const (
 	StateMainMenu               = "main_menu"
 	StateWaitingTournamentTitle = "waiting_tournament_title"
 	StateTournamentManagement
-	StateReviewApplications = "tournament_adding_participants"
+	StateApplyEnterName = "application_enter_name"
+	StateApplyEnterText = "application_enter_text"
 )
+
+type applyCtx struct {
+	TournamentID domain.TournamentID
+	Name         string
+}
+
+func (b *Bot) setApply(uid domain.TelegramUserID, a *applyCtx) {
+	if b.apply == nil {
+		b.apply = make(map[domain.TelegramUserID]*applyCtx)
+	}
+	b.apply[uid] = a
+}
+func (b *Bot) getApply(uid domain.TelegramUserID) *applyCtx {
+	if b.apply == nil {
+		return nil
+	}
+	return b.apply[uid]
+}
+func (b *Bot) clearApply(uid domain.TelegramUserID) {
+	if b.apply != nil {
+		delete(b.apply, uid)
+	}
+}
 
 type Bot struct {
 	bot    *tb.Bot
 	svc    *service.Service
 	states map[domain.TelegramUserID]string
+	apply  map[domain.TelegramUserID]*applyCtx
 	mu     sync.RWMutex
 }
 

@@ -62,8 +62,8 @@ func (s *Service) GetUserTournaments(userID domain.TelegramUserID) (map[domain.T
 	return s.store.GetUserTournaments(userID)
 }
 
-func (s *Service) ApplyToTournament(tid domain.TournamentID, userID domain.TelegramUserID) error {
-	t, err := s.store.GetTournament(tid)
+func (s *Service) ApplyToTournament(app *domain.Application) error {
+	t, err := s.store.GetTournament(app.TournamentID)
 	if err != nil {
 		return err
 	}
@@ -74,84 +74,71 @@ func (s *Service) ApplyToTournament(tid domain.TournamentID, userID domain.Teleg
 
 	for _, p := range t.Participants {
 		for _, id := range p.Roster {
-			if id == userID {
+			if id == app.TelegramUserID {
 				return errors.New("user already in tournament")
 			}
 		}
 	}
 
-	app := &domain.Application{
-		TournamentID:   tid,
-		TelegramUserID: userID,
+	appls, err := s.GetApplications(app.TournamentID)
+	if err != nil {
+		return err
+	}
+	for _, a := range appls {
+		if a.TelegramUserID == app.TelegramUserID {
+			return errors.New("user is already applied to this tournament")
+		}
 	}
 
 	return s.store.CreateApplication(app)
 }
 
-func (s *Service) ApproveApplication(tid domain.TournamentID, userID domain.TelegramUserID, adminID domain.TelegramUserID) (*domain.Tournament, error) {
-	t, err := s.store.GetTournament(tid)
-	if err != nil {
-		return nil, err
-	}
-
-	if t.OwnerID != adminID {
-		return nil, errors.New("only tournament owner can approve applications")
-	}
-
-	if t.CurrentRound > 0 {
-		return nil, errors.New("tournament already started")
-	}
-
-	p := &domain.Participant{
-		ID:           domain.ParticipantID(len(t.Participants)),
-		TournamentID: tid,
-		Kind:         domain.ParticipantKindUser,
-		Roster:       []domain.TelegramUserID{userID},
-		JoinedAt:     time.Now(),
-	}
-
-	err = s.store.AddParticipant(p)
-	if err != nil {
-		return nil, err
-	}
-
-	t.Participants = append(t.Participants, p)
-
-	if err := s.store.DeleteApplication(tid, userID); err != nil {
-		return nil, err
-	}
-
-	if err := s.store.SaveTournament(t); err != nil {
-		return nil, err
-	}
-
-	return t, nil
-}
-
-func (s *Service) RejectApplication(tid domain.TournamentID, userID domain.TelegramUserID, adminID domain.TelegramUserID) error {
-	t, err := s.store.GetTournament(tid)
+func (s *Service) ApproveApplication(tID domain.TournamentID, tgID domain.TelegramUserID) error {
+	t, err := s.store.GetTournament(tID)
 	if err != nil {
 		return err
 	}
 
-	if t.OwnerID != adminID {
-		return errors.New("only tournament owner can reject applications")
+	if t.CurrentRound > 0 {
+		return errors.New("tournament already started")
 	}
 
-	return s.store.DeleteApplication(tid, userID)
+	app, err := s.store.GetApplication(tID, tgID)
+	if err != nil {
+		return err
+	}
+	p := &domain.Participant{
+		ID:           domain.ParticipantID(len(t.Participants)),
+		Name:         app.Name,
+		TelegramTag:  app.TelegramTag,
+		TournamentID: app.TournamentID,
+		Kind:         domain.ParticipantKindUser,
+		Roster:       []domain.TelegramUserID{app.TelegramUserID},
+		JoinedAt:     time.Now(),
+	}
+
+	t.Participants = append(t.Participants, p)
+
+	if err := s.store.DeleteApplication(tID, tgID); err != nil {
+		return err
+	}
+	if err := s.store.SaveTournament(t); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (s *Service) GetApplications(tid domain.TournamentID, adminID domain.TelegramUserID) ([]*domain.Application, error) {
-	t, err := s.store.GetTournament(tid)
-	if err != nil {
-		return nil, err
-	}
+func (s *Service) RejectApplication(tID domain.TournamentID, tgID domain.TelegramUserID) error {
+	return s.store.DeleteApplication(tID, tgID)
+}
 
-	if t.OwnerID != adminID {
-		return nil, errors.New("only tournament owner can view applications")
-	}
-
+func (s *Service) GetApplications(tid domain.TournamentID) ([]*domain.Application, error) {
 	return s.store.GetApplications(tid)
+}
+
+func (s *Service) GetApplication(tid domain.TournamentID, uid domain.TelegramUserID) (*domain.Application, error) {
+	return s.store.GetApplication(tid, uid)
 }
 
 func (s *Service) GetTournament(tid domain.TournamentID) (*domain.Tournament, error) {

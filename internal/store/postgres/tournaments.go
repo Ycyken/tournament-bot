@@ -59,7 +59,7 @@ func (s *PostgresStore) SaveTournament(t *domain.Tournament) error {
 	// save byes
 	for pid := range t.Byes {
 		_, err := tx.Exec(`
-			INSERT INTO participant_byes (tournament_id, participant_id, round_number)
+			INSERT INTO participant_byes (tournament_id, participant_id)
 			VALUES ($1, $2)
 			ON CONFLICT DO NOTHING
 		`, t.ID, pid)
@@ -122,7 +122,7 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 
 	// load participants
 	rows, err := s.db.Query(`
-		SELECT id, kind, name, eliminated, score, joined_at
+		SELECT id, kind, name, telegram_tag, eliminated, score, joined_at
 		FROM participants WHERE tournament_id = $1 ORDER BY id
 	`, t.ID)
 	if err != nil {
@@ -132,7 +132,7 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 
 	for rows.Next() {
 		p := &domain.Participant{}
-		if err := rows.Scan(&p.ID, &p.Kind, &p.Name, &p.Eliminated, &p.Score, &p.JoinedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Kind, &p.Name, &p.TelegramTag, &p.Eliminated, &p.Score, &p.JoinedAt); err != nil {
 			return nil, err
 		}
 		p.TournamentID = t.ID
@@ -299,9 +299,9 @@ func (s *PostgresStore) GetUserTournaments(userID domain.TelegramUserID) (map[do
 
 func (s *PostgresStore) AddParticipant(p *domain.Participant) error {
 	_, err := s.db.Exec(`
-        INSERT INTO participants (id, tournament_id, kind, name, eliminated, score, joined_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, p.ID, p.TournamentID, p.Kind, p.Name, p.Eliminated, p.Score, p.JoinedAt)
+        INSERT INTO participants (id, tournament_id, kind, name, telegram_tag, eliminated, score, joined_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, p.ID, p.TournamentID, p.Kind, p.Name, p.TelegramTag, p.Eliminated, p.Score, p.JoinedAt)
 	if err != nil {
 		return err
 	}

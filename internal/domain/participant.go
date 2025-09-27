@@ -12,6 +12,7 @@ const (
 type Participant struct {
 	ID           ParticipantID
 	Name         string
+	TelegramTag  *string
 	TournamentID TournamentID
 	Kind         ParticipantKind
 	Roster       []TelegramUserID

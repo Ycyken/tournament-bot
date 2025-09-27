@@ -15,6 +15,7 @@ const MainMenu = "main_menu"
 const CreateTournament = "create_tournament"
 const ListTournaments = "list_tournaments"
 const MyTournaments = "my_tournaments"
+const ApplySkipText = "apply_skip_text"
 
 func mainMenu() *tb.ReplyMarkup {
 	menu := &tb.ReplyMarkup{}
@@ -24,7 +25,7 @@ func mainMenu() *tb.ReplyMarkup {
 	return menu
 }
 
-func tournamentsPage(c tb.Context, tournaments map[domain.TournamentID]string, page int) error {
+func tournamentsPageView(c tb.Context, tournaments map[domain.TournamentID]string, page int) (string, *tb.ReplyMarkup) {
 	log.Printf("number of tournaments is %d", len(tournaments))
 	menu := &tb.ReplyMarkup{}
 	var rows []tb.Row
@@ -52,10 +53,10 @@ func tournamentsPage(c tb.Context, tournaments map[domain.TournamentID]string, p
 
 	var navBtns []tb.Btn
 	if start > 0 {
-		navBtns = append(navBtns, menu.Data("<< Назад", fmt.Sprintf("page_%d", page-1)))
+		navBtns = append(navBtns, menu.Data("<< Назад", fmt.Sprintf("myts_page_%d", page-1)))
 	}
 	if end < len(ids) {
-		navBtns = append(navBtns, menu.Data("Вперёд >>", fmt.Sprintf("page_%d", page+1)))
+		navBtns = append(navBtns, menu.Data("Вперёд >>", fmt.Sprintf("myts_page_%d", page+1)))
 	}
 	if len(navBtns) > 0 {
 		rows = append(rows, menu.Row(navBtns...))
@@ -66,7 +67,7 @@ func tournamentsPage(c tb.Context, tournaments map[domain.TournamentID]string, p
 	rows = append(rows, menu.Row(btnCreate, btnMain))
 
 	menu.Inline(rows...)
-	return c.Edit("Ваши турниры:", menu)
+	return "Ваши турниры:", menu
 }
 
 func tournamentMenu(c tb.Context, t *domain.Tournament) error {
@@ -91,10 +92,57 @@ func tournamentMenu(c tb.Context, t *domain.Tournament) error {
 	return c.Edit(fmt.Sprintf("Турнир %s | ID %d", t.Title, t.ID), menu)
 }
 
-func applicationMenu(c tb.Context, tID domain.TournamentID, apps []*domain.Application, idx int) error {
+func sendTournamentsPage(c tb.Context, tournaments map[domain.TournamentID]string, page int) error {
+	text, markup := tournamentsPageView(c, tournaments, page)
+	return c.Send(text, markup)
+}
+func editTournamentsPage(c tb.Context, tournaments map[domain.TournamentID]string, page int) error {
+	text, markup := tournamentsPageView(c, tournaments, page)
+	return c.Edit(text, markup)
+}
+
+func allTournamentsPage(c tb.Context, ts []*domain.Tournament, page int) error {
+	menu := &tb.ReplyMarkup{}
+	var rows []tb.Row
+
+	sort.Slice(ts, func(i, j int) bool { return ts[i].ID < ts[j].ID })
+
+	start := page * pageSize
+	end := start + pageSize
+	if start >= len(ts) {
+		start = 0
+		end = pageSize
+	}
+	if end > len(ts) {
+		end = len(ts)
+	}
+
+	for _, t := range ts[start:end] {
+		btn := menu.Data(fmt.Sprintf("%s | ID %d", t.Title, t.ID), fmt.Sprintf("tournament_%d", t.ID))
+		rows = append(rows, menu.Row(btn))
+	}
+
+	var nav []tb.Btn
+	if start > 0 {
+		nav = append(nav, menu.Data("<< Назад", fmt.Sprintf("allts_page_%d", page-1)))
+	}
+	if end < len(ts) {
+		nav = append(nav, menu.Data("Вперёд >>", fmt.Sprintf("allts_page_%d", page+1)))
+	}
+	if len(nav) > 0 {
+		rows = append(rows, menu.Row(nav...))
+	}
+
+	rows = append(rows, menu.Row(menu.Data("Главное меню", MainMenu)))
+
+	menu.Inline(rows...)
+	return c.Edit("Список турниров:", menu)
+}
+
+func applicationMenu(c tb.Context, t *domain.Tournament, apps []*domain.Application, idx int) error {
 	menu := &tb.ReplyMarkup{}
 
-	btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", tID))
+	btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
 	if len(apps) == 0 {
 		menu.Inline(menu.Row(btnBack))
 		return c.Edit("Заявок нет", menu)
@@ -107,9 +155,17 @@ func applicationMenu(c tb.Context, tID domain.TournamentID, apps []*domain.Appli
 	}
 	app := apps[idx]
 
+	text := ""
+	tag := ""
+	if app.Text != nil {
+		text = *app.Text
+	}
+	if app.TelegramTag != nil {
+		tag = "(@" + *app.TelegramTag + ")"
+	}
 	title := fmt.Sprintf(
-		"Заявка от участника с tgID: %d",
-		app.TelegramUserID,
+		"Заявка от участника %s %s на турнир %s:\n\n%s",
+		app.Name, tag, t.Title, text,
 	)
 
 	btnApprove := menu.Data("✅ Принять", fmt.Sprintf("app_approve_%d_%d", app.TournamentID, app.TelegramUserID))

@@ -14,5 +14,6 @@ type Store interface {
 
 	CreateApplication(app *domain.Application) error
 	GetApplications(tournamentID domain.TournamentID) ([]*domain.Application, error)
+	GetApplication(tID domain.TournamentID, tgID domain.TelegramUserID) (*domain.Application, error)
 	DeleteApplication(tournamentID domain.TournamentID, userID domain.TelegramUserID) error
 }
