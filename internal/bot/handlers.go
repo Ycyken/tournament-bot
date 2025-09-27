@@ -351,6 +351,79 @@ func registerHandlers(bt *Bot) {
 			}
 			return nil
 		}
+		if strings.HasPrefix(data, "adm_matches_tournament") {
+			tIDStr := strings.TrimPrefix(data, "adm_matches_tournament")
+			tID64, err := strconv.ParseInt(tIDStr, 10, 64)
+			if err != nil {
+				return c.Send("Некорректный ID турнира")
+			}
+			tID := domain.TournamentID(tID64)
+
+			t, err := bt.svc.GetTournament(tID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+
+			text := buildCurrentMatchesText(t)
+			menu := &tb.ReplyMarkup{}
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
+			btnSet := menu.Data("✏️ Изменить результат", fmt.Sprintf("adm_setresult_%d", t.ID))
+			menu.Inline(menu.Row(btnSet), menu.Row(btnBack))
+			return c.Edit(text, menu)
+		}
+
+		if strings.HasPrefix(data, "adm_setresult_") {
+			tIDStr := strings.TrimPrefix(data, "adm_setresult_")
+			tID64, err := strconv.ParseInt(tIDStr, 10, 64)
+			if err != nil {
+				return c.Send("Некорректный ID турнира")
+			}
+			tID := domain.TournamentID(tID64)
+
+			adminID := domain.TelegramUserID(c.Sender().ID)
+			bt.setState(adminID, StateAdminAwaitMatchID)
+			bt.setAdminCtx(adminID, &adminSetResultCtx{TournamentID: tID})
+
+			menu := &tb.ReplyMarkup{}
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("adm_matches_tournament%d", tID))
+			menu.Inline(menu.Row(btnBack))
+			return c.Edit("Введите ID матча (число):", menu)
+		}
+
+		if strings.HasPrefix(data, "adm_apply_result_") {
+			rest := strings.TrimPrefix(data, "adm_apply_result_")
+			parts := strings.SplitN(rest, "_", 3)
+			if len(parts) != 3 {
+				return c.Send("Некорректные данные кнопки")
+			}
+
+			tID64, err1 := strconv.ParseInt(parts[0], 10, 64)
+			mID64, err2 := strconv.ParseInt(parts[1], 10, 64)
+			res := parts[2]
+			if err1 != nil || err2 != nil || (res != "p1" && res != "p2" && res != "draw") {
+				return c.Send("Некорректные данные результата")
+			}
+			tID := domain.TournamentID(tID64)
+			mID := domain.MatchID(mID64)
+			adminID := domain.TelegramUserID(c.Sender().ID)
+
+			t, err := bt.svc.SetMatchResultByAdmin(tID, mID, adminID, domain.ResultType(res))
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+
+			_ = c.Send("✅ Результат матча обновлён администратором.")
+
+			text := buildCurrentMatchesText(t)
+			menu := &tb.ReplyMarkup{}
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
+			btnSet := menu.Data("✏️ Изменить результат", fmt.Sprintf("adm_setresult_%d", t.ID))
+			menu.Inline(menu.Row(btnSet), menu.Row(btnBack))
+			if err := c.Edit(text, menu); err != nil {
+				return c.Send(text, menu)
+			}
+			return nil
+		}
 
 		return nil
 	})
@@ -424,9 +497,87 @@ func registerHandlers(bt *Bot) {
 			bt.setState(userID, StateMainMenu)
 			_ = c.Send("Заявка отправлена! Администратор скоро её рассмотрит.")
 			return c.Send("Выберите действие", mainMenu())
+		case StateAdminAwaitMatchID:
+			adminID := domain.TelegramUserID(c.Sender().ID)
+			ctx := bt.getAdminCtx(adminID)
+			if ctx == nil {
+				bt.setState(adminID, StateMainMenu)
+				return c.Send("Сессия админа сброшена.", mainMenu())
+			}
+
+			mID64, err := strconv.ParseInt(strings.TrimSpace(c.Text()), 10, 64)
+			if err != nil {
+				return c.Send("Нужно число — ID матча. Попробуйте ещё раз.")
+			}
+			mID := domain.MatchID(mID64)
+
+			t, err := bt.svc.GetTournament(ctx.TournamentID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+
+			var match *domain.Match
+			for _, ms := range t.Matches {
+				for _, m := range ms {
+					if m.ID == mID {
+						match = m
+						break
+					}
+				}
+				if match != nil {
+					break
+				}
+			}
+			if match == nil {
+				return c.Send("Матч с таким ID не найден. Введите другой ID.")
+			}
+
+			// рисуем кнопки результата
+			menu := &tb.ReplyMarkup{}
+			btnP1 := menu.Data("🏆 Выиграл первый", fmt.Sprintf("adm_apply_result_%d_%d_p1", t.ID, mID))
+			btnDraw := menu.Data("🤝 Ничья", fmt.Sprintf("adm_apply_result_%d_%d_draw", t.ID, mID))
+			btnP2 := menu.Data("🏆 Выиграл второй", fmt.Sprintf("adm_apply_result_%d_%d_p2", t.ID, mID))
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("adm_matches_tournament%d", t.ID))
+			menu.Inline(menu.Row(btnP1, btnDraw, btnP2), menu.Row(btnBack))
+
+			bt.setState(adminID, StateMainMenu) // выходим из режима ввода
+			bt.clearAdminCtx(adminID)
+
+			return c.Send(
+				fmt.Sprintf("Матч ID %d:\nP1=%d, P2=%d.\nВыберите результат:", mID, match.P1, match.P2),
+				menu,
+			)
 		}
 
 		return c.Send("Не распознал команду")
 	})
+}
 
+func buildCurrentMatchesText(t *domain.Tournament) string {
+	var lines []string
+	lines = append(lines, fmt.Sprintf("Текущие матчи турнира «%s» (Раунд %d):", t.Title, t.CurrentRound))
+	
+	name := func(id domain.ParticipantID) string {
+		for _, p := range t.Participants {
+			if p.ID == id {
+				return p.Name
+			}
+		}
+		return fmt.Sprintf("ID %d", id)
+	}
+
+	has := false
+	if ms, ok := t.Matches[t.CurrentRound]; ok {
+		for _, m := range ms {
+			if m.State == domain.MatchCompleted {
+				continue
+			}
+			has = true
+			lines = append(lines, fmt.Sprintf("• #%d: %s vs %s", m.ID, name(m.P1), name(m.P2)))
+		}
+	}
+	if !has {
+		lines = append(lines, "— нет незавершённых матчей.")
+	}
+	return strings.Join(lines, "\n")
 }

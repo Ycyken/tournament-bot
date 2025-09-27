@@ -15,8 +15,9 @@ const (
 	StateMainMenu               = "main_menu"
 	StateWaitingTournamentTitle = "waiting_tournament_title"
 	StateTournamentManagement
-	StateApplyEnterName = "application_enter_name"
-	StateApplyEnterText = "application_enter_text"
+	StateApplyEnterName    = "application_enter_name"
+	StateApplyEnterText    = "application_enter_text"
+	StateAdminAwaitMatchID = "admin_await_match_id"
 )
 
 type applyCtx struct {
@@ -42,11 +43,37 @@ func (b *Bot) clearApply(uid domain.TelegramUserID) {
 	}
 }
 
+type adminSetResultCtx struct {
+	TournamentID domain.TournamentID
+}
+
+func (b *Bot) setAdminCtx(uid domain.TelegramUserID, ctx *adminSetResultCtx) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.admin == nil {
+		b.admin = make(map[domain.TelegramUserID]*adminSetResultCtx)
+	}
+	b.admin[uid] = ctx
+}
+
+func (b *Bot) getAdminCtx(uid domain.TelegramUserID) *adminSetResultCtx {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.admin[uid]
+}
+
+func (b *Bot) clearAdminCtx(uid domain.TelegramUserID) {
+	b.mu.Lock()
+	delete(b.admin, uid)
+	b.mu.Unlock()
+}
+
 type Bot struct {
 	bot    *tb.Bot
 	svc    *service.Service
 	states map[domain.TelegramUserID]string
 	apply  map[domain.TelegramUserID]*applyCtx
+	admin  map[domain.TelegramUserID]*adminSetResultCtx
 	mu     sync.RWMutex
 }
 

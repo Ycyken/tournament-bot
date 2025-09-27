@@ -83,9 +83,12 @@ func tournamentMenu(c tb.Context, t *domain.Tournament) error {
 	btnApps := menu.Data("Заявки на турнир", fmt.Sprintf("applications_tournament%d", t.ID))
 	btnStart := menu.Data("Начать турнир", fmt.Sprintf("start_tournament%d", t.ID))
 	btnInfo := menu.Data("Информация о турнире", fmt.Sprintf("pinfo_tournament%d", t.ID))
+	btnCur := menu.Data("Текущие матчи", fmt.Sprintf("adm_matches_tournament%d", t.ID))
 
 	if t.CurrentRound == 0 {
 		rows = append(rows, menu.Row(btnApps), menu.Row(btnStart))
+	} else {
+		rows = append(rows, menu.Row(btnCur))
 	}
 	rows = append(rows, menu.Row(btnInfo), menu.Row(btnMain))
 	menu.Inline(rows...)
