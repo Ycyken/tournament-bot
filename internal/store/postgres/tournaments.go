@@ -138,7 +138,7 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 		p.TournamentID = t.ID
 
 		// load roster
-		members, err := s.db.Query(`SELECT telegram_user_id FROM participant_members WHERE participant_id = $1 AND tournamend_id = $2`, p.ID, t.ID)
+		members, err := s.db.Query(`SELECT telegram_user_id FROM participant_members WHERE participant_id = $1 AND tournament_id = $2`, p.ID, t.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -230,6 +230,71 @@ func (s *PostgresStore) GetTournament(id domain.TournamentID) (*domain.Tournamen
 	}
 
 	return t, nil
+}
+
+func (s *PostgresStore) GetTournaments() ([]*domain.Tournament, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT id
+		FROM tournaments
+		ORDER BY id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var ids []domain.TournamentID
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, domain.TournamentID(id))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var tournaments []*domain.Tournament
+	for _, tid := range ids {
+		t, err := s.GetTournament(tid)
+		if err != nil {
+			return nil, err
+		}
+		tournaments = append(tournaments, t)
+	}
+
+	return tournaments, nil
+}
+
+func (s *PostgresStore) GetUserTournaments(userID domain.TelegramUserID) (map[domain.TournamentID]string, error) {
+	rows, err := s.db.Query(`
+		SELECT DISTINCT t.id, t.title
+		FROM tournaments t
+		LEFT JOIN participants p ON t.id = p.tournament_id
+		LEFT JOIN participant_members pm ON p.id = pm.participant_id AND p.tournament_id = pm.tournament_id
+		WHERE pm.telegram_user_id = $1 OR t.owner_id = $1
+		ORDER BY t.id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tournaments := make(map[domain.TournamentID]string)
+	for rows.Next() {
+		var id int64
+		var title string
+		if err := rows.Scan(&id, &title); err != nil {
+			return nil, err
+		}
+		tournaments[domain.TournamentID(id)] = title
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tournaments, nil
 }
 
 func (s *PostgresStore) AddParticipant(p *domain.Participant) error {

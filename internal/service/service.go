@@ -58,6 +58,10 @@ func (s *Service) StartTournament(tid domain.TournamentID) (*domain.Tournament, 
 	return t, nil
 }
 
+func (s *Service) GetUserTournaments(userID domain.TelegramUserID) (map[domain.TournamentID]string, error) {
+	return s.store.GetUserTournaments(userID)
+}
+
 func (s *Service) ApplyToTournament(tid domain.TournamentID, userID domain.TelegramUserID) error {
 	t, err := s.store.GetTournament(tid)
 	if err != nil {
@@ -152,6 +156,10 @@ func (s *Service) GetApplications(tid domain.TournamentID, adminID domain.Telegr
 
 func (s *Service) GetTournament(tid domain.TournamentID) (*domain.Tournament, error) {
 	return s.store.GetTournament(tid)
+}
+
+func (s *Service) GetTournaments() ([]*domain.Tournament, error) {
+	return s.store.GetTournaments()
 }
 
 func (s *Service) ReportMatchResult(tournamentID domain.TournamentID, matchID domain.MatchID, userID domain.TelegramUserID, result domain.ResultType) (*domain.Tournament, error) {
