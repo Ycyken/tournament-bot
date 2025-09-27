@@ -35,7 +35,7 @@ func registerHandlers(bt *Bot) {
 			if err != nil {
 				return c.Send("Ошибка: " + err.Error())
 			}
-			return tournamentsPage(bt, c, tournaments, 0)
+			return tournamentsPage(c, tournaments, 0)
 		case ListTournaments:
 			tournaments, err := bt.svc.GetTournaments()
 			if err != nil {
@@ -47,7 +47,7 @@ func registerHandlers(bt *Bot) {
 			}
 
 			result := strings.Join(strIDs, "\n")
-			return c.Send(result)
+			return c.Edit(result)
 		}
 
 		if strings.HasPrefix(data, "page_") {
@@ -60,7 +60,7 @@ func registerHandlers(bt *Bot) {
 			if err != nil {
 				return c.Send("Ошибка: " + err.Error())
 			}
-			return tournamentsPage(bt, c, tournaments, page)
+			return c.Edit(tournamentsPage(c, tournaments, page))
 		}
 
 		if strings.HasPrefix(data, "tournament_") {
@@ -69,7 +69,52 @@ func registerHandlers(bt *Bot) {
 			if err != nil {
 				return c.Send("Некорректный ID турнира")
 			}
-			return c.Edit(fmt.Sprintf("Турнир ID %d — что сделать?", tID))
+			t, err := bt.svc.GetTournament(domain.TournamentID(tID))
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+			return c.Edit(tournamentMenu(c, t))
+		}
+
+		if strings.HasPrefix(data, "applications_") {
+			tIDStr := strings.TrimPrefix(data, "applications_tournament")
+			tID64, err := strconv.Atoi(tIDStr)
+			tID := domain.TournamentID(tID64)
+			if err != nil {
+				return c.Send("Некорректный ID турнира")
+			}
+			apps, err := bt.svc.GetApplications(tID, userID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+			return c.Edit(applicationMenu(c, tID, apps, 0))
+		}
+
+		if strings.HasPrefix(data, "start_tournament") {
+			tIDStr := strings.TrimPrefix(data, "start_tournament")
+			tID64, err := strconv.Atoi(tIDStr)
+			if err != nil {
+				return c.Send("Некорректный ID турнира")
+			}
+			tID := domain.TournamentID(tID64)
+			err = bt.svc.StartTournament(tID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+			return c.Send(fmt.Sprintf("Турнир ID %d начат!", tID))
+		}
+
+		if strings.HasPrefix(data, "information_tournament") {
+			tIDStr := strings.TrimPrefix(data, "information_tournament")
+			tID64, err := strconv.Atoi(tIDStr)
+			if err != nil {
+				return c.Send("Некорректный ID турнира")
+			}
+			tID := domain.TournamentID(tID64)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+			return c.Send(fmt.Sprintf("Турнир ID %d - что с ним делать?", tID))
 		}
 
 		return nil
@@ -97,7 +142,7 @@ func registerHandlers(bt *Bot) {
 				return c.Send("Ошибка: " + err.Error())
 			}
 
-			return tournamentsPage(bt, c, tournaments, 0)
+			return tournamentsPage(c, tournaments, 0)
 
 		case StateReviewApplications:
 			// Здесь логика обработки заявок

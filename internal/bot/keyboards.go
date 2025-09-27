@@ -24,7 +24,7 @@ func mainMenu() *tb.ReplyMarkup {
 	return menu
 }
 
-func tournamentsPage(bt *Bot, c tb.Context, tournaments map[domain.TournamentID]string, page int) error {
+func tournamentsPage(c tb.Context, tournaments map[domain.TournamentID]string, page int) error {
 	log.Printf("number of tournaments is %d", len(tournaments))
 	menu := &tb.ReplyMarkup{}
 	var rows []tb.Row
@@ -49,7 +49,6 @@ func tournamentsPage(bt *Bot, c tb.Context, tournaments map[domain.TournamentID]
 		btn := menu.Data(fmt.Sprintf("%s | ID %d", tournaments[id], id), fmt.Sprintf("tournament_%d", id))
 		rows = append(rows, menu.Row(btn))
 	}
-	menu.Inline(rows...)
 
 	var navBtns []tb.Btn
 	if start > 0 {
@@ -67,5 +66,58 @@ func tournamentsPage(bt *Bot, c tb.Context, tournaments map[domain.TournamentID]
 	rows = append(rows, menu.Row(btnCreate, btnMain))
 
 	menu.Inline(rows...)
-	return c.Send("Ваши турниры:", menu)
+	return c.Edit("Ваши турниры:", menu)
+}
+
+func tournamentMenu(c tb.Context, t *domain.Tournament) error {
+	menu := &tb.ReplyMarkup{}
+	tgID := domain.TelegramUserID(c.Sender().ID)
+
+	btnMain := menu.Data("Главное меню", MainMenu)
+	if tgID != t.OwnerID {
+		menu.Inline(menu.Row(btnMain))
+		return c.Send("какая-то инфа о турнире", menu)
+	}
+	var rows []tb.Row
+	btnApps := menu.Data("Заявки на турнир", fmt.Sprintf("applications_tournament%d", t.ID))
+	btnStart := menu.Data("Начать турнир", fmt.Sprintf("start_tournament%d", t.ID))
+	btnInfo := menu.Data("Информация о турнире", fmt.Sprintf("information_tournament%d", t.ID))
+
+	if t.CurrentRound == 0 {
+		rows = append(rows, menu.Row(btnApps), menu.Row(btnStart))
+	}
+	rows = append(rows, menu.Row(btnInfo), menu.Row(btnMain))
+	menu.Inline(rows...)
+	return c.Edit(fmt.Sprintf("Турнир %s | ID %d", t.Title, t.ID), menu)
+}
+
+func applicationMenu(c tb.Context, tID domain.TournamentID, apps []*domain.Application, idx int) error {
+	menu := &tb.ReplyMarkup{}
+
+	btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", tID))
+	if len(apps) == 0 {
+		menu.Inline(menu.Row(btnBack))
+		return c.Edit("Заявок нет", menu)
+	}
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(apps) {
+		idx = len(apps) - 1
+	}
+	app := apps[idx]
+
+	title := fmt.Sprintf(
+		"Заявка от участника с tgID: %d",
+		app.TelegramUserID,
+	)
+
+	btnApprove := menu.Data("✅ Принять", fmt.Sprintf("app_approve_%d_%d", app.TournamentID, app.TelegramUserID))
+	btnReject := menu.Data("❌ Отклонить", fmt.Sprintf("app_reject_%d_%d", app.TournamentID, app.TelegramUserID))
+
+	menu.Inline(
+		menu.Row(btnApprove, btnReject),
+		menu.Row(btnBack),
+	)
+	return c.Edit(title, menu)
 }

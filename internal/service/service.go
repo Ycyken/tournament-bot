@@ -29,33 +29,33 @@ func (s *Service) CreateTournament(owner domain.TelegramUserID, title string) (*
 	return t, nil
 }
 
-func (s *Service) StartTournament(tid domain.TournamentID) (*domain.Tournament, error) {
+func (s *Service) StartTournament(tid domain.TournamentID) error {
 	t, err := s.store.GetTournament(tid)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if t.CurrentRound > 0 {
-		return nil, errors.New("tournament already started")
+		return errors.New("tournament already started")
 	}
 
 	if len(t.Participants) <= 2 {
-		return nil, errors.New("need at least 3 participants to start tournament")
+		return errors.New("need at least 3 participants to start tournament")
 	}
 
 	// ⌊log₂(N)⌋ + 1
 	t.LastRound = domain.Round(int(math.Log2(float64(len(t.Participants)))) + 1)
 
 	if err := t.DrawNewRound(); err != nil {
-		return nil, err
+		return err
 	}
 
 	err = s.store.SaveTournament(t)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return t, nil
+	return nil
 }
 
 func (s *Service) GetUserTournaments(userID domain.TelegramUserID) (map[domain.TournamentID]string, error) {
