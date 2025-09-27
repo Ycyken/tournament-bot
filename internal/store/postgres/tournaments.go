@@ -88,7 +88,7 @@ func (s *PostgresStore) SaveTournament(t *domain.Tournament) error {
 			_, err := tx.Exec(`
 				INSERT INTO matches (id, tournament_id, round_number, p1_id, p2_id, state, opinion_p1, opinion_p2, result, scheduled_at)
 				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-				ON CONFLICT (id) DO UPDATE
+				ON CONFLICT (id, tournament_id) DO UPDATE
 				    SET state = EXCLUDED.state,
 				        opinion_p1 = EXCLUDED.opinion_p1,
 				        opinion_p2 = EXCLUDED.opinion_p2,

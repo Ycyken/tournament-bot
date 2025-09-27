@@ -82,7 +82,7 @@ func tournamentMenu(c tb.Context, t *domain.Tournament) error {
 	var rows []tb.Row
 	btnApps := menu.Data("Заявки на турнир", fmt.Sprintf("applications_tournament%d", t.ID))
 	btnStart := menu.Data("Начать турнир", fmt.Sprintf("start_tournament%d", t.ID))
-	btnInfo := menu.Data("Информация о турнире", fmt.Sprintf("information_tournament%d", t.ID))
+	btnInfo := menu.Data("Информация о турнире", fmt.Sprintf("pinfo_tournament%d", t.ID))
 
 	if t.CurrentRound == 0 {
 		rows = append(rows, menu.Row(btnApps), menu.Row(btnStart))
@@ -139,21 +139,15 @@ func allTournamentsPage(c tb.Context, ts []*domain.Tournament, page int) error {
 	return c.Edit("Список турниров:", menu)
 }
 
-func applicationMenu(c tb.Context, t *domain.Tournament, apps []*domain.Application, idx int) error {
+func applicationMenu(c tb.Context, t *domain.Tournament, apps []*domain.Application) error {
 	menu := &tb.ReplyMarkup{}
-
 	btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
+
 	if len(apps) == 0 {
 		menu.Inline(menu.Row(btnBack))
 		return c.Edit("Заявок нет", menu)
 	}
-	if idx < 0 {
-		idx = 0
-	}
-	if idx >= len(apps) {
-		idx = len(apps) - 1
-	}
-	app := apps[idx]
+	app := apps[0]
 
 	text := ""
 	tag := ""
@@ -176,4 +170,19 @@ func applicationMenu(c tb.Context, t *domain.Tournament, apps []*domain.Applicat
 		menu.Row(btnBack),
 	)
 	return c.Edit(title, menu)
+}
+
+func participantMenu(c tb.Context, t *domain.Tournament, tgID domain.TelegramUserID) error {
+	menu := &tb.ReplyMarkup{}
+
+	btnInfo := menu.Data("ℹ️ Информация о турнире", fmt.Sprintf("pinfo_tournament%d", t.ID))
+	btnMyMatches := menu.Data("📅 Мои матчи", fmt.Sprintf("pmatches_tournament%d_%d", t.ID, tgID))
+	btnMain := menu.Data("Главное меню", MainMenu)
+
+	menu.Inline(
+		menu.Row(btnInfo),
+		menu.Row(btnMyMatches),
+		menu.Row(btnMain),
+	)
+	return c.Edit(fmt.Sprintf("Турнир %s | ID %d", t.Title, t.ID), menu)
 }

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"time"
@@ -56,14 +57,20 @@ func NewTournament(ownerID TelegramUserID, title string, system System) *Tournam
 }
 
 func (t *Tournament) UserParticipates(tgID TelegramUserID) bool {
-	for _, p := range t.Participants {
-		for _, uid := range p.Roster {
-			if uid == tgID {
-				return true
-			}
+	p := t.FindParticipantBytgID(tgID)
+	if p == nil {
+		return false
+	}
+	return true
+}
+
+func (t *Tournament) FindCurrentMatch(pID ParticipantID) *Match {
+	for _, m := range t.Matches[t.CurrentRound] {
+		if m.P1 == pID || m.P2 == pID {
+			return m
 		}
 	}
-	return false
+	return nil
 }
 
 func (t *Tournament) ReportOpinion(matchID MatchID, pID ParticipantID, result ResultType) error {
@@ -90,6 +97,8 @@ func (t *Tournament) ReportOpinion(matchID MatchID, pID ParticipantID, result Re
 		}
 	}
 
+	_ = t.DrawNewRound()
+
 	return nil
 }
 
@@ -101,7 +110,75 @@ func (t *Tournament) SetMatchResultByAdmin(matchID MatchID, result ResultType) e
 
 	match.Result = &result
 	match.State = MatchCompleted
+	_ = t.DrawNewRound()
 	return nil
+}
+
+func (t *Tournament) FindParticipantByPID(pID ParticipantID) *Participant {
+	for _, p := range t.Participants {
+		if p.ID == pID {
+			return p
+		}
+	}
+	return nil
+}
+
+func (t *Tournament) FindParticipantBytgID(tgID TelegramUserID) *Participant {
+	for _, p := range t.Participants {
+		for _, id := range p.Roster {
+			if id == tgID {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
+func (t *Tournament) GetParticipantMatches(pID ParticipantID) []*Match {
+	var matches []*Match
+	for r := Round(1); r <= t.CurrentRound; r++ {
+		for _, m := range t.Matches[r] {
+			if m.P1 == pID || m.P2 == pID {
+				matches = append(matches, m)
+				break
+			}
+		}
+	}
+	return matches
+}
+
+func (t *Tournament) GetMatchesHistory(pID ParticipantID) string {
+	matches := t.GetParticipantMatches(pID)
+
+	var text string
+	for _, m := range matches {
+		if m == nil {
+			text += fmt.Sprintf("Раунд %d: у вас пока не назначен матч.\n\n", m.Round)
+			break
+		}
+		p := t.FindParticipantByPID(pID)
+		var tag string
+		if p.TelegramTag != nil {
+			tag = "(@" + *p.TelegramTag + ")"
+		}
+		text += fmt.Sprintf("Раунд %d: матч против %s%s:\n", m.Round, p.Name, tag)
+		text += fmt.Sprintf("Состояние: %s\n", m.State)
+		if m.Result != nil {
+			if m.P1 == pID && *m.Result == P1Won ||
+				m.P2 == pID && *m.Result == P2Won {
+				text += "Результат: Вы выиграли!"
+			} else if *m.Result == "draw" {
+				text += "Результат: Ничья!"
+			} else {
+				text += "Результат: Вы проиграли."
+			}
+		} else {
+			text += "Матч еще не завершен."
+		}
+		text += "\n\n"
+	}
+
+	return text
 }
 
 func (t *Tournament) DrawNewRound() error {
@@ -136,7 +213,7 @@ func (t *Tournament) DrawNewRound() error {
 	}
 	for i := 0; i < len(pairing)-1; i += 2 {
 		t.Matches[t.CurrentRound] = append(t.Matches[t.CurrentRound], &Match{
-			ID:           MatchID(len(t.Matches[t.CurrentRound]) + 1),
+			ID:           t.nextMatchID(),
 			TournamentID: t.ID,
 			Round:        t.CurrentRound,
 			P1:           pairing[i],
@@ -152,9 +229,17 @@ func (t *Tournament) DrawNewRound() error {
 	return nil
 }
 
+func (t *Tournament) nextMatchID() MatchID {
+	var matchID int
+	for _, ms := range t.Matches {
+		matchID += len(ms)
+	}
+	return MatchID(matchID)
+}
+
 func pairParticipantsSwiss(t *Tournament) []ParticipantID {
 	var byeID ParticipantID = -1
-	var lowestScore float64 = math.MaxFloat64
+	var lowestScore = math.MaxFloat64
 	for _, p := range t.Participants {
 		if !t.Byes[p.ID] && (p.Score < lowestScore) {
 			byeID = p.ID

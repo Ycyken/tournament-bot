@@ -101,10 +101,13 @@ func registerHandlers(bt *Bot) {
 				return c.Send("Ошибка при одобрении: " + err.Error())
 			}
 
-			return c.Edit(
-				fmt.Sprintf("✅ Заявка пользователя %s %s на турнир %s одобрена!", app.Name, tag, t.Title),
-				mainMenu(),
-			)
+			_ = c.Send(fmt.Sprintf("✅ Заявка пользователя %s%s на турнир «%s» одобрена!", app.Name, tag, t.Title))
+
+			apps, err := bt.svc.GetApplications(tID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+			return applicationMenu(c, t, apps)
 		}
 
 		if strings.HasPrefix(data, "app_reject_") {
@@ -137,7 +140,13 @@ func registerHandlers(bt *Bot) {
 				return c.Send("Ошибка при отклонении: " + err.Error())
 			}
 
-			return c.Edit(fmt.Sprintf("❌ Заявка пользователя %s @%s на турнир с %s отклонена!", app.Name, tag, t.Title), mainMenu())
+			_ = c.Send(fmt.Sprintf("❌ Заявка пользователя %s%s на турнир «%s» отклонена.", app.Name, tag, t.Title))
+
+			apps, err := bt.svc.GetApplications(tID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+			return applicationMenu(c, t, apps)
 		}
 
 		if data == ApplySkipText {
@@ -178,7 +187,7 @@ func registerHandlers(bt *Bot) {
 				return tournamentMenu(c, t)
 			}
 			if t.UserParticipates(tgID) {
-				return c.Send("МЕНЮ УЧАСТНИКА")
+				return participantMenu(c, t, tgID)
 			}
 
 			bt.setState(tgID, StateApplyEnterName)
@@ -197,20 +206,21 @@ func registerHandlers(bt *Bot) {
 			))
 		}
 
-		if strings.HasPrefix(data, "applications_") {
+		if strings.HasPrefix(data, "applications_tournament") {
 			tIDStr := strings.TrimPrefix(data, "applications_tournament")
 			tID64, err := strconv.Atoi(tIDStr)
 			tID := domain.TournamentID(tID64)
 			if err != nil {
 				return c.Send("Некорректный ID турнира")
 			}
+
 			apps, err := bt.svc.GetApplications(tID)
 			if err != nil {
 				return c.Send("Ошибка: " + err.Error())
 			}
-
 			t, _ := bt.svc.GetTournament(tID)
-			return c.Edit(applicationMenu(c, t, apps, 0))
+
+			applicationMenu(c, t, apps)
 		}
 
 		if strings.HasPrefix(data, "start_tournament") {
@@ -237,7 +247,109 @@ func registerHandlers(bt *Bot) {
 			if err != nil {
 				return c.Send("Ошибка: " + err.Error())
 			}
-			return c.Send(fmt.Sprintf("Турнир ID %d - что с ним делать?", tID))
+			t, _ := bt.svc.GetTournament(tID)
+
+			return c.Edit(participantMenu(c, t, userID))
+		}
+
+		if strings.HasPrefix(data, "pinfo_tournament") {
+			tIDStr := strings.TrimPrefix(data, "pinfo_tournament")
+			tID64, err := strconv.Atoi(tIDStr)
+			if err != nil {
+				return c.Send("Некорректный ID турнира")
+			}
+			t, err := bt.svc.GetTournament(domain.TournamentID(tID64))
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+
+			info := TournamentInfoMessage(t)
+
+			menu := &tb.ReplyMarkup{}
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
+			menu.Inline(menu.Row(btnBack))
+			return c.Edit(info, menu)
+		}
+
+		if strings.HasPrefix(data, "pmatches_tournament") {
+			rest := strings.TrimPrefix(data, "pmatches_tournament")
+			parts := strings.Split(rest, "_")
+			if len(parts) != 2 {
+				return c.Send("Некорректные данные кнопки")
+			}
+			tID64, err1 := strconv.Atoi(parts[0])
+			tgID64, err2 := strconv.Atoi(parts[1])
+			if err1 != nil || err2 != nil {
+				return c.Send("Некорректный формат ID")
+			}
+			tID := domain.TournamentID(tID64)
+			tgID := domain.TelegramUserID(tgID64)
+
+			t, err := bt.svc.GetTournament(tID)
+			if err != nil {
+				return c.Send("Ошибка: " + err.Error())
+			}
+
+			p := t.FindParticipantBytgID(tgID)
+			text := t.GetMatchesHistory(p.ID)
+
+			menu := &tb.ReplyMarkup{}
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
+
+			matches := t.GetParticipantMatches(p.ID)
+			if m := matches[len(matches)-1]; m != nil {
+				winRes, loseRes := "p1", "p2"
+				if m.P1 != p.ID {
+					winRes, loseRes = "p2", "p1"
+				}
+				btnWin := menu.Data("✅ Я выиграл", fmt.Sprintf("pmatch_report_%d_%d_%s", t.ID, m.ID, winRes))
+				btnDraw := menu.Data("🤝 Ничья", fmt.Sprintf("pmatch_report_%d_%d_draw", t.ID, m.ID))
+				btnLose := menu.Data("❌ Я проиграл", fmt.Sprintf("pmatch_report_%d_%d_%s", t.ID, m.ID, loseRes))
+				menu.Inline(menu.Row(btnWin, btnDraw, btnLose), menu.Row(btnBack))
+			} else {
+				menu.Inline(menu.Row(btnBack))
+			}
+			if err := c.Edit(text, menu); err != nil {
+				return c.Send(text, menu)
+			}
+			return c.Edit(text, menu)
+		}
+
+		if strings.HasPrefix(data, "pmatch_report_") {
+			rest := strings.TrimPrefix(data, "pmatch_report_")
+			parts := strings.SplitN(rest, "_", 3)
+			if len(parts) != 3 {
+				return c.Send("Некорректные данные кнопки")
+			}
+			tID64, err1 := strconv.ParseInt(parts[0], 10, 64)
+			mID64, err2 := strconv.ParseInt(parts[1], 10, 64)
+			res := parts[2] // "p1" | "p2" | "draw"
+			if err1 != nil || err2 != nil || (res != "p1" && res != "p2" && res != "draw") {
+				return c.Send("Некорректные данные результата")
+			}
+
+			tID := domain.TournamentID(tID64)
+			mID := domain.MatchID(mID64)
+			uid := domain.TelegramUserID(c.Sender().ID)
+
+			t, err := bt.svc.ReportMatchResult(tID, mID, uid, domain.ResultType(res))
+			if err != nil {
+				return c.Send("Ошибка при отправке результата: " + err.Error())
+			}
+
+			_ = c.Send("✅ Ваш отчёт о матче принят.")
+
+			p := t.FindParticipantBytgID(uid)
+			text := t.GetMatchesHistory(p.ID)
+
+			menu := &tb.ReplyMarkup{}
+			btnBack := menu.Data("⬅️ Назад", fmt.Sprintf("tournament_%d", t.ID))
+			menu.Inline(menu.Row(btnBack))
+
+			if err := c.Edit(text, menu); err != nil {
+				return c.Send(text, menu)
+			}
+			return nil
 		}
 
 		return nil
